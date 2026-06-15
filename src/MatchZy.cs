@@ -119,6 +119,39 @@ namespace MatchZy
         private Dictionary<int, bool> playerReadyStatus = new Dictionary<int, bool>();
         private Dictionary<int, CCSPlayerController> playerData = new Dictionary<int, CCSPlayerController>();
         private readonly Dictionary<ulong, long> playerConnectionTimes = new();
+
+        // SweatHost: per-weapon kill buckets [pistol, sniper, chicken] keyed by
+        // steamId64. CS2 native MatchStats has no per-weapon/chicken breakdown,
+        // so we track these here and surface them in the RELIABLE round_end
+        // scoreboard (replaces the buggy fire-and-forget custom bridge).
+        private readonly Dictionary<ulong, int[]> shWeaponKills = new();
+        private static readonly HashSet<string> ShPistols = new()
+        {
+            "glock", "usp_silencer", "hkp2000", "deagle", "elite", "p250",
+            "fiveseven", "tec9", "cz75a", "revolver",
+        };
+        private static readonly HashSet<string> ShSnipers = new()
+        {
+            "awp", "ssg08", "scar20", "g3sg1",
+        };
+
+        // Record a non-suicide kill into the SweatHost per-weapon buckets.
+        private void ShRecordWeaponKill(ulong steamId, string? weapon)
+        {
+            if (steamId == 0 || string.IsNullOrWhiteSpace(weapon)) return;
+            var w = weapon.ToLowerInvariant();
+            if (w.StartsWith("weapon_")) w = w.Substring(7);
+            int idx;
+            if (ShPistols.Contains(w)) idx = 0;
+            else if (ShSnipers.Contains(w)) idx = 1;
+            else return; // not a perk weapon (chicken handled separately, fast-follow)
+            if (!shWeaponKills.TryGetValue(steamId, out var arr))
+            {
+                arr = new int[3];
+                shWeaponKills[steamId] = arr;
+            }
+            arr[idx]++;
+        }
         private readonly object matchReportUploadLock = new();
         private bool matchReportUploadScheduled = false;
 

@@ -502,6 +502,18 @@ public partial class MatchZy
                     info.DontBroadcast = true;
                 }
             }
+
+            // SweatHost: bucket non-suicide kills by weapon for perk stats.
+            // attacker != victim excludes suicides (molotov self-burn etc.) and
+            // !isWarmup excludes warmup/knife. Surfaced in round_end via
+            // GetPlayerStatsDict — the RELIABLE path (no dropped clinch round).
+            if (!isWarmup
+                && @event.Attacker != null && @event.Attacker.IsValid
+                && @event.Attacker != @event.Userid
+                && @event.Attacker.SteamID != 0)
+            {
+                ShRecordWeaponKill(@event.Attacker.SteamID, @event.Weapon);
+            }
             return HookResult.Continue;
         }
         catch (Exception e)

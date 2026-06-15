@@ -129,6 +129,18 @@ public class PlayerStats
 
     [JsonPropertyName("mvp")]
     public int Mvps { get; set; }
+
+    // SweatHost: per-weapon perk metrics. Native CS2 MatchStats has no per-weapon
+    // breakdown, so these are tracked in MatchZy's death handler (shWeaponKills)
+    // and surfaced here. chicken_kills is reserved (fast-follow, not yet tracked).
+    [JsonPropertyName("pistol_kills")]
+    public int PistolKills { get; set; }
+
+    [JsonPropertyName("sniper_kills")]
+    public int SniperKills { get; set; }
+
+    [JsonPropertyName("chicken_kills")]
+    public int ChickenKills { get; set; }
 }
 
 public class MatchZyPlayerInfo

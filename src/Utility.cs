@@ -1219,6 +1219,9 @@ namespace MatchZy
         {
             try
             {
+                // SweatHost: clear per-weapon perk buckets between matches.
+                shWeaponKills.Clear();
+
                 // We stop demo recording if a live match was restarted
                 if (matchStarted && isDemoRecording)
                 {
@@ -3510,6 +3513,7 @@ namespace MatchZy
 
                     // Populate PlayerStats instance
                     // Todo: Implement stats which are marked as 0 for now
+                    shWeaponKills.TryGetValue(steamid64, out var shWk);
                     PlayerStats playerStatsInstance = new()
                     {
                         Kills = playerStats.Kills,
@@ -3545,6 +3549,10 @@ namespace MatchZy
                         Kast = 0,
                         Score = player.Score,
                         Mvps = player.MVPs,
+                        // SweatHost per-weapon perk metrics (chicken reserved).
+                        PistolKills = shWk?[0] ?? 0,
+                        SniperKills = shWk?[1] ?? 0,
+                        ChickenKills = shWk?[2] ?? 0,
                     };
 
                     StatsPlayer statsPlayer = new()
