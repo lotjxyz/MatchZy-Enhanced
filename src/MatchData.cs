@@ -141,6 +141,13 @@ public class PlayerStats
 
     [JsonPropertyName("chicken_kills")]
     public int ChickenKills { get; set; }
+
+    // SweatHost accuracy (from native MatchStats ShotsFired/OnTarget) + bomb.
+    [JsonPropertyName("shots_fired")]
+    public int ShotsFired { get; set; }
+
+    [JsonPropertyName("shots_hit")]
+    public int ShotsHit { get; set; }
 }
 
 public class MatchZyPlayerInfo

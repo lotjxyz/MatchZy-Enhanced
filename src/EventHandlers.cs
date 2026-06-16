@@ -326,6 +326,8 @@ public partial class MatchZy
     {
         try
         {
+            // SweatHost: trade detection is per-round — clear the recent-kills buffer.
+            shRecentKills.Clear();
             // If we deferred the simulation flow because a changelevel was in progress,
             // schedule it once the first real round starts on the target map. We add a
             // short delay so the server is fully in warmup and ready for connections
@@ -513,6 +515,10 @@ public partial class MatchZy
                 && @event.Attacker.SteamID != 0)
             {
                 ShRecordWeaponKill(@event.Attacker.SteamID, @event.Weapon);
+                var shVictim = @event.Userid;
+                ShRecordTradeAndKill(
+                    @event.Attacker.SteamID, @event.Attacker.TeamNum,
+                    shVictim?.SteamID ?? 0, shVictim?.TeamNum ?? 0);
             }
             return HookResult.Continue;
         }

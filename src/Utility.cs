@@ -1221,6 +1221,7 @@ namespace MatchZy
             {
                 // SweatHost: clear per-weapon perk buckets between matches.
                 shWeaponKills.Clear();
+                shRecentKills.Clear();
 
                 // We stop demo recording if a live match was restarted
                 if (matchStarted && isDemoRecording)
@@ -3531,8 +3532,9 @@ namespace MatchZy
                         KnifeKills = shWk?[3] ?? 0,
                         HeadshotKills = playerStats.HeadShotKills,
                         RoundsPlayed = roundsPlayed,
-                        BombDefuses = 0,
-                        BombPlants = 0,
+                        // Bomb plants/defuses tracked in the SweatHost bomb handlers.
+                        BombDefuses = shWk?[5] ?? 0,
+                        BombPlants = shWk?[4] ?? 0,
                         Kills1 = 0,
                         Kills2 = playerStats.Enemy2Ks,
                         Kills3 = playerStats.Enemy3Ks,
@@ -3550,14 +3552,18 @@ namespace MatchZy
                         FirstKillsCT = 0,
                         FirstDeathsT = 0,
                         FirstDeathsCT = 0,
-                        TradeKills = 0,
+                        // Trade kills tracked in the SweatHost death handler.
+                        TradeKills = shWk?[6] ?? 0,
                         Kast = 0,
                         Score = player.Score,
                         Mvps = player.MVPs,
-                        // SweatHost per-weapon perk metrics (chicken reserved).
+                        // SweatHost per-weapon perk metrics + native accuracy
+                        // (KnifeKills already mapped above near HeadshotKills).
                         PistolKills = shWk?[0] ?? 0,
                         SniperKills = shWk?[1] ?? 0,
                         ChickenKills = shWk?[2] ?? 0,
+                        ShotsFired = playerStats.ShotsFiredTotal,
+                        ShotsHit = playerStats.ShotsOnTargetTotal,
                     };
 
                     StatsPlayer statsPlayer = new()

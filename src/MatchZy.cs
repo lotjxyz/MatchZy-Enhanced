@@ -120,11 +120,18 @@ namespace MatchZy
         private Dictionary<int, CCSPlayerController> playerData = new Dictionary<int, CCSPlayerController>();
         private readonly Dictionary<ulong, long> playerConnectionTimes = new();
 
-        // SweatHost: per-weapon kill buckets [pistol, sniper, chicken, knife]
-        // keyed by steamId64. CS2 native MatchStats has no per-weapon/chicken
-        // breakdown, so we track these here and surface them in the RELIABLE
-        // round_end scoreboard (replaces the buggy fire-and-forget custom bridge).
+        // SweatHost: per-player perk counters keyed by steamId64. Index map:
+        //   0 pistol, 1 sniper, 2 chicken, 3 knife, 4 bombPlants, 5 bombDefuses, 6 tradeKills.
+        // CS2 native MatchStats has no per-weapon/chicken/bomb/trade breakdown, so
+        // we track these here and surface them in the RELIABLE round_end scoreboard
+        // (replaces the buggy fire-and-forget custom bridge). Accuracy/entry/flash/
+        // clutch/multi-kills come straight from native MatchStats.
+        private const int ShPistol = 0, ShSniper = 1, ShChicken = 2, ShKnife = 3,
+            ShBombPlant = 4, ShBombDefuse = 5, ShTrade = 6, ShCountSize = 7;
         private readonly Dictionary<ulong, int[]> shWeaponKills = new();
+        // Recent kills this round for trade detection: (killer, killer's victim's team, gametime).
+        private readonly List<(ulong killer, int victimTeam, float time)> shRecentKills = new();
+        private const float ShTradeWindowSecs = 5f;
         private static readonly HashSet<string> ShPistols = new()
         {
             "glock", "usp_silencer", "hkp2000", "deagle", "elite", "p250",
@@ -135,6 +142,16 @@ namespace MatchZy
             "awp", "ssg08", "scar20", "g3sg1",
         };
 
+        private int[] ShCounts(ulong steamId)
+        {
+            if (!shWeaponKills.TryGetValue(steamId, out var arr))
+            {
+                arr = new int[ShCountSize];
+                shWeaponKills[steamId] = arr;
+            }
+            return arr;
+        }
+
         // Record a non-suicide kill into the SweatHost per-weapon buckets.
         private void ShRecordWeaponKill(ulong steamId, string? weapon)
         {
@@ -142,16 +159,32 @@ namespace MatchZy
             var w = weapon.ToLowerInvariant();
             if (w.StartsWith("weapon_")) w = w.Substring(7);
             int idx;
-            if (ShPistols.Contains(w)) idx = 0;
-            else if (ShSnipers.Contains(w)) idx = 1;
-            else if (w.Contains("knife") || w == "bayonet") idx = 3;
-            else return; // not a tracked perk weapon (chicken=2 reserved)
-            if (!shWeaponKills.TryGetValue(steamId, out var arr))
+            if (ShPistols.Contains(w)) idx = ShPistol;
+            else if (ShSnipers.Contains(w)) idx = ShSniper;
+            else if (w.Contains("knife") || w == "bayonet") idx = ShKnife;
+            else return; // not a tracked perk weapon (chicken handled via OtherDeath)
+            ShCounts(steamId)[idx]++;
+        }
+
+        // Trade kill: the attacker killed an enemy who had killed an attacker-teammate
+        // within the last few seconds. Call AFTER recording the kill's other stats.
+        private void ShRecordTradeAndKill(ulong attackerId, int attackerTeam, ulong victimId, int victimTeam)
+        {
+            var now = Server.CurrentTime;
+            shRecentKills.RemoveAll(k => now - k.time > ShTradeWindowSecs);
+            if (attackerId != 0)
             {
-                arr = new int[4];
-                shWeaponKills[steamId] = arr;
+                // Did the just-killed victim recently kill someone on the attacker's team?
+                foreach (var rk in shRecentKills)
+                {
+                    if (rk.killer == victimId && rk.victimTeam == attackerTeam)
+                    {
+                        ShCounts(attackerId)[ShTrade]++;
+                        break;
+                    }
+                }
+                shRecentKills.Add((attackerId, victimTeam, now));
             }
-            arr[idx]++;
         }
 
         // SweatHost: chicken kills. CS2 fires EventOtherDeath (not EventPlayerDeath)
@@ -166,18 +199,35 @@ namespace MatchZy
                 var attacker = Utilities.GetPlayerFromUserid(@event.Attacker);
                 if (attacker == null || !attacker.IsValid || attacker.IsBot
                     || attacker.SteamID == 0) return HookResult.Continue;
-                var sid = attacker.SteamID;
-                if (!shWeaponKills.TryGetValue(sid, out var arr))
-                {
-                    arr = new int[4];
-                    shWeaponKills[sid] = arr;
-                }
-                arr[2]++; // index 2 = chicken
+                ShCounts(attacker.SteamID)[ShChicken]++;
             }
             catch (Exception e)
             {
                 Log($"[ShOnOtherDeath FATAL] {e.Message}");
             }
+            return HookResult.Continue;
+        }
+
+        // SweatHost: bomb plant/defuse counters.
+        public HookResult ShOnBombPlanted(EventBombPlanted @event, GameEventInfo info)
+        {
+            try
+            {
+                if (matchStarted && !isWarmup && IsPlayerValid(@event.Userid) && !@event.Userid!.IsBot && @event.Userid.SteamID != 0)
+                    ShCounts(@event.Userid.SteamID)[ShBombPlant]++;
+            }
+            catch (Exception e) { Log($"[ShOnBombPlanted FATAL] {e.Message}"); }
+            return HookResult.Continue;
+        }
+
+        public HookResult ShOnBombDefused(EventBombDefused @event, GameEventInfo info)
+        {
+            try
+            {
+                if (matchStarted && !isWarmup && IsPlayerValid(@event.Userid) && !@event.Userid!.IsBot && @event.Userid.SteamID != 0)
+                    ShCounts(@event.Userid.SteamID)[ShBombDefuse]++;
+            }
+            catch (Exception e) { Log($"[ShOnBombDefused FATAL] {e.Message}"); }
             return HookResult.Continue;
         }
         private readonly object matchReportUploadLock = new();
@@ -420,8 +470,10 @@ namespace MatchZy
 
             RegisterEventHandler<EventPlayerConnectFull>(EventPlayerConnectFullHandler);
             RegisterEventHandler<EventPlayerDisconnect>(EventPlayerDisconnectHandler);
-            // SweatHost: chicken kills (EventOtherDeath with Othertype="chicken").
+            // SweatHost: chicken kills + bomb plants/defuses for perk stats.
             RegisterEventHandler<EventOtherDeath>(ShOnOtherDeath);
+            RegisterEventHandler<EventBombPlanted>(ShOnBombPlanted);
+            RegisterEventHandler<EventBombDefused>(ShOnBombDefused);
             RegisterEventHandler<EventCsWinPanelRound>(EventCsWinPanelRoundHandler, hookMode: HookMode.Pre);
             RegisterEventHandler<EventCsWinPanelMatch>(EventCsWinPanelMatchHandler);
             RegisterEventHandler<EventRoundStart>(EventRoundStartHandler);
