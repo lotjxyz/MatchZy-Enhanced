@@ -153,6 +153,33 @@ namespace MatchZy
             }
             arr[idx]++;
         }
+
+        // SweatHost: chicken kills. CS2 fires EventOtherDeath (not EventPlayerDeath)
+        // for non-player entities; Othertype == "chicken" identifies a chicken.
+        // Ported from the SweatHost Deathmatch bridge (the reliable mechanism).
+        public HookResult ShOnOtherDeath(EventOtherDeath @event, GameEventInfo info)
+        {
+            try
+            {
+                if (!matchStarted || isWarmup) return HookResult.Continue;
+                if (@event.Othertype != "chicken") return HookResult.Continue;
+                var attacker = Utilities.GetPlayerFromUserid(@event.Attacker);
+                if (attacker == null || !attacker.IsValid || attacker.IsBot
+                    || attacker.SteamID == 0) return HookResult.Continue;
+                var sid = attacker.SteamID;
+                if (!shWeaponKills.TryGetValue(sid, out var arr))
+                {
+                    arr = new int[4];
+                    shWeaponKills[sid] = arr;
+                }
+                arr[2]++; // index 2 = chicken
+            }
+            catch (Exception e)
+            {
+                Log($"[ShOnOtherDeath FATAL] {e.Message}");
+            }
+            return HookResult.Continue;
+        }
         private readonly object matchReportUploadLock = new();
         private bool matchReportUploadScheduled = false;
 
@@ -393,6 +420,8 @@ namespace MatchZy
 
             RegisterEventHandler<EventPlayerConnectFull>(EventPlayerConnectFullHandler);
             RegisterEventHandler<EventPlayerDisconnect>(EventPlayerDisconnectHandler);
+            // SweatHost: chicken kills (EventOtherDeath with Othertype="chicken").
+            RegisterEventHandler<EventOtherDeath>(ShOnOtherDeath);
             RegisterEventHandler<EventCsWinPanelRound>(EventCsWinPanelRoundHandler, hookMode: HookMode.Pre);
             RegisterEventHandler<EventCsWinPanelMatch>(EventCsWinPanelMatchHandler);
             RegisterEventHandler<EventRoundStart>(EventRoundStartHandler);
