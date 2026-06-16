@@ -120,10 +120,10 @@ namespace MatchZy
         private Dictionary<int, CCSPlayerController> playerData = new Dictionary<int, CCSPlayerController>();
         private readonly Dictionary<ulong, long> playerConnectionTimes = new();
 
-        // SweatHost: per-weapon kill buckets [pistol, sniper, chicken] keyed by
-        // steamId64. CS2 native MatchStats has no per-weapon/chicken breakdown,
-        // so we track these here and surface them in the RELIABLE round_end
-        // scoreboard (replaces the buggy fire-and-forget custom bridge).
+        // SweatHost: per-weapon kill buckets [pistol, sniper, chicken, knife]
+        // keyed by steamId64. CS2 native MatchStats has no per-weapon/chicken
+        // breakdown, so we track these here and surface them in the RELIABLE
+        // round_end scoreboard (replaces the buggy fire-and-forget custom bridge).
         private readonly Dictionary<ulong, int[]> shWeaponKills = new();
         private static readonly HashSet<string> ShPistols = new()
         {
@@ -144,10 +144,11 @@ namespace MatchZy
             int idx;
             if (ShPistols.Contains(w)) idx = 0;
             else if (ShSnipers.Contains(w)) idx = 1;
-            else return; // not a perk weapon (chicken handled separately, fast-follow)
+            else if (w.Contains("knife") || w == "bayonet") idx = 3;
+            else return; // not a tracked perk weapon (chicken=2 reserved)
             if (!shWeaponKills.TryGetValue(steamId, out var arr))
             {
-                arr = new int[3];
+                arr = new int[4];
                 shWeaponKills[steamId] = arr;
             }
             arr[idx]++;

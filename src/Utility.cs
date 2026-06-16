@@ -3519,14 +3519,16 @@ namespace MatchZy
                         Kills = playerStats.Kills,
                         Deaths = playerStats.Deaths,
                         Assists = playerStats.Assists,
-                        FlashAssists = 0,
+                        // SweatHost: map from CS2 native MatchStats (were hardcoded 0).
+                        FlashAssists = playerStats.Flash_Successes,
                         TeamKills = 0,
                         Suicides = 0,
                         Damage = playerStats.Damage,
                         UtilityDamage = playerStats.UtilityDamage,
                         EnemiesFlashed = playerStats.EnemiesFlashed,
                         FriendliesFlashed = 0,
-                        KnifeKills = 0,
+                        // Knife kills tracked in the SweatHost death handler.
+                        KnifeKills = shWk?[3] ?? 0,
                         HeadshotKills = playerStats.HeadShotKills,
                         RoundsPlayed = roundsPlayed,
                         BombDefuses = 0,
@@ -3541,7 +3543,10 @@ namespace MatchZy
                         OneV3s = 0,
                         OneV4s = 0,
                         OneV5s = 0,
-                        FirstKillsT = 0,
+                        // Entry (opening) kills from native EntryWins. Native doesn't
+                        // split by side, so the total lands in FirstKillsT (the API
+                        // sums first_kills_t + first_kills_ct = entryKills).
+                        FirstKillsT = playerStats.EntryWins,
                         FirstKillsCT = 0,
                         FirstDeathsT = 0,
                         FirstDeathsCT = 0,
