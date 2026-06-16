@@ -1128,6 +1128,13 @@ namespace MatchZy
         private void StartLive()
         {
             CrashBreadcrumb("StartLive: enter");
+            // SweatHost: re-arm the perk gate for this map's go-live. The flag is
+            // flipped back to true by the first post-restart round_start (see
+            // HandlePostRoundStartEvent), which also clears any window/previous-map
+            // perk buckets. We reset here — in the genuine go-live entry point — and
+            // NOT in SetLiveFlags()/SetupLiveFlagsAndCfg(), because backup-restore
+            // reuses those and must keep its accumulated perk stats.
+            shLiveRoundStarted = false;
             SetupLiveFlagsAndCfg();
             CrashBreadcrumb("StartLive: after SetupLiveFlagsAndCfg");
             StartDemoRecording();
@@ -1222,6 +1229,10 @@ namespace MatchZy
                 // SweatHost: clear per-weapon perk buckets between matches.
                 shWeaponKills.Clear();
                 shRecentKills.Clear();
+                // Disarm perk recording until the next match actually goes live (the
+                // first post-restart round_start re-arms it). Prevents any stray
+                // pre-live kills from being attributed across a re-setup.
+                shLiveRoundStarted = false;
 
                 // We stop demo recording if a live match was restarted
                 if (matchStarted && isDemoRecording)
@@ -2555,6 +2566,22 @@ namespace MatchZy
             // Send round_started event
             if (isMatchLive)
             {
+                // SweatHost: the first round_start fired while live is the REAL round 1
+                // — the engine has now actually restarted via mp_restartgame, so any
+                // perk kills recorded during the restart-delay window are stale. Clear
+                // the buckets once and arm perk recording. Guarded by !shLiveRoundStarted
+                // so it runs exactly once per map go-live and is a no-op on subsequent
+                // rounds and on backup-restore replays (which keep accumulated stats and
+                // never re-enter via StartLive). StartLive() resets the flag for each
+                // genuine map go-live; ResetMatch() resets it for a fresh match.
+                if (!shLiveRoundStarted)
+                {
+                    shLiveRoundStarted = true;
+                    shWeaponKills.Clear();
+                    shRecentKills.Clear();
+                    Log("[SweatHost] First live round started — perk counters armed and reset (restart-delay window discarded).");
+                }
+
                 Log($"[HandlePostRoundStartEvent] Sending round_started event");
                 (int t1score, int t2score) = GetTeamsScore();
 

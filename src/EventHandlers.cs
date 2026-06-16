@@ -507,9 +507,14 @@ public partial class MatchZy
 
             // SweatHost: bucket non-suicide kills by weapon for perk stats.
             // attacker != victim excludes suicides (molotov self-burn etc.) and
-            // !isWarmup excludes warmup/knife. Surfaced in round_end via
-            // GetPlayerStatsDict — the RELIABLE path (no dropped clinch round).
-            if (!isWarmup
+            // !isWarmup excludes warmup/knife. shLiveRoundStarted excludes kills
+            // landed during the mp_restartgame go-live delay window (matchStarted is
+            // already true and isWarmup already false there, but the engine has not
+            // restarted yet — see shLiveRoundStarted in MatchZy.cs). Surfaced in
+            // round_end via GetPlayerStatsDict — the RELIABLE path (no dropped clinch
+            // round).
+            if (shLiveRoundStarted
+                && !isWarmup
                 && @event.Attacker != null && @event.Attacker.IsValid
                 && @event.Attacker != @event.Userid
                 && @event.Attacker.SteamID != 0)

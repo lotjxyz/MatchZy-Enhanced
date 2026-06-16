@@ -15,7 +15,7 @@ namespace MatchZy
 
         public override string ModuleName => "MatchZy";
 
-        public override string ModuleVersion => "1.4.21";
+        public override string ModuleVersion => "1.4.21-sh6";
 
         public override string ModuleAuthor => "sivert (https://github.com/sivert-io/)";
 
@@ -129,6 +129,23 @@ namespace MatchZy
         private const int ShPistol = 0, ShSniper = 1, ShChicken = 2, ShKnife = 3,
             ShBombPlant = 4, ShBombDefuse = 5, ShTrade = 6, ShCountSize = 7;
         private readonly Dictionary<ulong, int[]> shWeaponKills = new();
+        // SweatHost: gate for perk recording. Set true only on the FIRST round_start
+        // that fires AFTER the match has actually gone live (i.e. after ExecLiveCFG's
+        // `mp_restartgame` has reset the engine to round 1). Perk counters
+        // (shWeaponKills: pistol/sniper/knife/trade/chicken/bomb) are recorded only
+        // while this is true.
+        //
+        // Why this exists: SetLiveFlags() flips matchStarted=true / isWarmup=false /
+        // isMatchLive=true *immediately*, but ExecLiveCFG() then issues
+        // `mp_restartgame 1` (or 3 on the default-cfg path) — so for 1-3s the plugin
+        // thinks the match is live while players are still in the warmup tail and can
+        // shoot. Native CS2 MatchStats (kills/deaths/damage) gets wiped by the
+        // restart, but shWeaponKills did NOT — so those window kills survived only in
+        // the perk buckets. That mis-awarded the Pistolero perk to whoever fragged in
+        // the restart window and let pistolKills exceed real kills. Gating on
+        // shLiveRoundStarted (armed + buckets cleared on the first post-restart round)
+        // discards the window and keeps perk counts aligned with native kills.
+        private bool shLiveRoundStarted = false;
         // Recent kills this round for trade detection: (killer, killer's victim's team, gametime).
         private readonly List<(ulong killer, int victimTeam, float time)> shRecentKills = new();
         private const float ShTradeWindowSecs = 5f;
@@ -194,7 +211,7 @@ namespace MatchZy
         {
             try
             {
-                if (!matchStarted || isWarmup) return HookResult.Continue;
+                if (!matchStarted || isWarmup || !shLiveRoundStarted) return HookResult.Continue;
                 if (@event.Othertype != "chicken") return HookResult.Continue;
                 var attacker = Utilities.GetPlayerFromUserid(@event.Attacker);
                 if (attacker == null || !attacker.IsValid || attacker.IsBot
@@ -213,7 +230,7 @@ namespace MatchZy
         {
             try
             {
-                if (matchStarted && !isWarmup && IsPlayerValid(@event.Userid) && !@event.Userid!.IsBot && @event.Userid.SteamID != 0)
+                if (matchStarted && !isWarmup && shLiveRoundStarted && IsPlayerValid(@event.Userid) && !@event.Userid!.IsBot && @event.Userid.SteamID != 0)
                     ShCounts(@event.Userid.SteamID)[ShBombPlant]++;
             }
             catch (Exception e) { Log($"[ShOnBombPlanted FATAL] {e.Message}"); }
@@ -224,7 +241,7 @@ namespace MatchZy
         {
             try
             {
-                if (matchStarted && !isWarmup && IsPlayerValid(@event.Userid) && !@event.Userid!.IsBot && @event.Userid.SteamID != 0)
+                if (matchStarted && !isWarmup && shLiveRoundStarted && IsPlayerValid(@event.Userid) && !@event.Userid!.IsBot && @event.Userid.SteamID != 0)
                     ShCounts(@event.Userid.SteamID)[ShBombDefuse]++;
             }
             catch (Exception e) { Log($"[ShOnBombDefused FATAL] {e.Message}"); }
