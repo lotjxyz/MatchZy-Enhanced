@@ -505,25 +505,37 @@ public partial class MatchZy
                 }
             }
 
-            // SweatHost: bucket non-suicide kills by weapon for perk stats.
-            // attacker != victim excludes suicides (molotov self-burn etc.) and
-            // !isWarmup excludes warmup/knife. shLiveRoundStarted excludes kills
-            // landed during the mp_restartgame go-live delay window (matchStarted is
-            // already true and isWarmup already false there, but the engine has not
-            // restarted yet — see shLiveRoundStarted in MatchZy.cs). Surfaced in
-            // round_end via GetPlayerStatsDict — the RELIABLE path (no dropped clinch
-            // round).
+            // SweatHost: bucket non-suicide ENEMY kills by weapon for perk stats.
+            // attacker != victim excludes suicides (molotov self-burn etc.),
+            // !isWarmup excludes warmup/knife, and shLiveRoundStarted excludes
+            // kills landed during the mp_restartgame go-live delay window (see
+            // shLiveRoundStarted in MatchZy.cs).
+            //
+            // FRIENDLY FIRE IS EXCLUDED (attacker.TeamNum != victim.TeamNum).
+            // CS2's native MatchStats does NOT credit a kill for shooting a
+            // teammate — but EventPlayerDeath still fires for it, so without this
+            // check a team-kill inflates the per-weapon perk buckets even though
+            // it never counted toward the player's total kills. Observed
+            // 2026-06-17 (match 7PkMDEGr92HS1Iycc0Tu): a player whose 5 real
+            // kills were all AWP also glock-TK'd 2 teammates after a side swap →
+            // pistolKills wrongly showed 2 (kills=5, sniperKills=5, pistolKills=2,
+            // i.e. 7 weapon kills > 5 total). TeamNum is the LIVE side at the
+            // instant of the kill, so this stays correct across halftime swaps.
+            // Surfaced in round_end via GetPlayerStatsDict — the RELIABLE path
+            // (no dropped clinch round).
+            var shVictim = @event.Userid;
             if (shLiveRoundStarted
                 && !isWarmup
                 && @event.Attacker != null && @event.Attacker.IsValid
-                && @event.Attacker != @event.Userid
-                && @event.Attacker.SteamID != 0)
+                && @event.Attacker != shVictim
+                && @event.Attacker.SteamID != 0
+                && shVictim != null && shVictim.IsValid
+                && @event.Attacker.TeamNum != shVictim.TeamNum)
             {
                 ShRecordWeaponKill(@event.Attacker.SteamID, @event.Weapon);
-                var shVictim = @event.Userid;
                 ShRecordTradeAndKill(
                     @event.Attacker.SteamID, @event.Attacker.TeamNum,
-                    shVictim?.SteamID ?? 0, shVictim?.TeamNum ?? 0);
+                    shVictim.SteamID, shVictim.TeamNum);
             }
             return HookResult.Continue;
         }
